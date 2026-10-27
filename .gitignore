@@ -1,0 +1,11 @@
+# dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# secrets and local config (the committed template is .env.example)
+.env
+
+# OS / editor noise
+.DS_Store
+*.log
