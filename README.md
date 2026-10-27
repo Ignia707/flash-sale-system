@@ -3,6 +3,17 @@
 Flash-sale checkout that sells exactly 500 phones under a 100k-request spike.
 Work in progress: the full write-up (architecture, results) comes at the end.
 
+## Backend
+
+```bash
+cd backend
+pnpm install
+pnpm dev          # API on http://localhost:3000 (restarts on file changes)
+pnpm test         # unit + integration tests (needs the services below running)
+pnpm typecheck    # TypeScript type check
+curl localhost:3000/health
+```
+
 ## Running the backing services
 
 ```bash

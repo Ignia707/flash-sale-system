@@ -1,0 +1,43 @@
+import { describe, expect, it } from 'vitest';
+import { buildApp } from '../src/api/app.ts';
+
+// UNIT TEST with fakes: we hand the app pretend dependencies, so we can test
+// the "something is down" case without actually breaking a database.
+describe('GET /health (with fake dependencies)', () => {
+  it('returns 200 when every dependency is up', async () => {
+    const app = buildApp({
+      checks: {
+        postgres: async () => 'fine',
+        redis: async () => 'fine',
+      },
+    });
+
+    // inject() sends a fake request straight into the app: no port, no network
+    const response = await app.inject({ method: 'GET', url: '/health' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      status: 'ok',
+      checks: { postgres: 'ok', redis: 'ok' },
+    });
+  });
+
+  it('returns 503 and names the dependency that is down', async () => {
+    const app = buildApp({
+      checks: {
+        postgres: async () => 'fine',
+        redis: async () => {
+          throw new Error('connection refused');
+        },
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/health' });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      status: 'degraded',
+      checks: { postgres: 'ok', redis: 'down' },
+    });
+  });
+});
