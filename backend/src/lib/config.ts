@@ -32,6 +32,12 @@ export function loadConfig() {
       host: required("REDIS_HOST"),
       port: requiredInt("REDIS_PORT"),
     },
+    rabbitmq: {
+      host: required("RABBITMQ_HOST"),
+      port: requiredInt("RABBITMQ_PORT"),
+      user: required("RABBITMQ_USER"),
+      password: required("RABBITMQ_PASSWORD"),
+    },
   };
 }
 
