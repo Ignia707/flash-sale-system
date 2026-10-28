@@ -4,12 +4,13 @@ import { loadConfig } from "../lib/config.ts";
 import { createPool } from "../lib/db.ts";
 import { createGate } from "../lib/gate.ts";
 import { createRedis } from "../lib/redis.ts";
+import { withSoldOutCache } from "../lib/sold-out-cache.ts";
 import { buildApp } from "./app.ts";
 
 const config = loadConfig();
 const pool = createPool(config.postgres);
 const redis = createRedis(config.redis);
-const gate = createGate(redis);
+const gate = withSoldOutCache(createGate(redis));
 
 const app = buildApp({
   logger: true,
