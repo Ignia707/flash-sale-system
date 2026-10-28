@@ -2,8 +2,10 @@
 # ${...} values are filled in from the container's environment (see compose.yaml).
 
 upstream api {
+  zone api 64k;                # share the replicas' state between NGINX's worker processes
   least_conn;                  # send each request to the replica with the fewest active ones
-  server api:3000;             # the name resolves to every replica of the api service
+  # the name resolves to every replica; a replica that fails is skipped for 30 s
+  server api:3000 max_fails=1 fail_timeout=30s;
   keepalive 64;                # reuse connections to the replicas
 }
 
@@ -26,6 +28,7 @@ server {
     limit_req zone=checkout burst=${BURST_CHECKOUT} nodelay;
 
     proxy_pass http://api;
+    proxy_connect_timeout 1s;      # a dead replica costs one second, not the default minute
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     proxy_set_header Host $host;
@@ -35,6 +38,7 @@ server {
 
   location = /health {
     proxy_pass http://api;
+    proxy_connect_timeout 1s;
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     add_header Cache-Control "no-store" always;

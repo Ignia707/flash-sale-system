@@ -60,6 +60,7 @@ curl -s localhost:8080/api/sale
 | `RATE_SESSION`, `RATE_CHECKOUT` (+ `BURST_*`) | Per-IP requests/second allowed by NGINX on `/api/session` and `/api/checkout` (429 when exceeded) |
 | `SALE_STARTS_AT` | Sale opens at this UTC time; unset = open |
 
+If you stop and start a single replica, it gets a new address: run `podman exec app_nginx_1 nginx -s reload` so NGINX notices (`./scale-api.sh` does this itself).
 Use **either** the containerized worker **or** `pnpm worker` on your machine, not both.
 Stop only the app containers: `podman stop app_nginx_1 app_worker_1 app_api_1 app_api_2 app_api_3`.
 With Docker, replace `podman-compose` with `docker compose`.
