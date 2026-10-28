@@ -99,7 +99,9 @@ services:
   # the only service reachable from outside: http://localhost:${HTTP_PORT:-8080}
   nginx:
     profiles: ["app"]
-    image: docker.io/library/nginx:1.27-alpine
+    # the NGINX image with the built shop page inside (see frontend/Dockerfile)
+    image: flash-sale-web
+    build: ./frontend
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-8080}:80"
@@ -112,7 +114,6 @@ services:
     volumes:
       # the image fills ${...} in *.template files and writes the result to /etc/nginx/conf.d
       - ./infra/nginx/templates:/etc/nginx/templates:ro,Z
-      - ./infra/nginx/html:/usr/share/nginx/html:ro,Z
     depends_on:
       api: { condition: service_healthy }
 

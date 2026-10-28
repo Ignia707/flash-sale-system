@@ -35,6 +35,19 @@ podman-compose down         # stop (data is kept); add -v to wipe data
 | Redis | `localhost:6379` | |
 | RabbitMQ | `localhost:5672` | management UI at http://localhost:15672 |
 
+## Frontend
+
+A small React page (one screen): countdown to the sale start, a "Buy now" button, and the order status.
+
+```bash
+cd frontend
+pnpm install
+pnpm dev          # http://localhost:5173 (needs the API: run `pnpm dev` in backend/ too)
+pnpm test         # component and logic tests (no server needed)
+pnpm build        # production build in frontend/dist
+```
+In the full stack below, the built page is part of the NGINX image: http://localhost:8080.
+
 ## Running the whole system
 
 Besides the three backing services, this starts the API (3 identical replicas), the worker and NGINX.
