@@ -2,12 +2,12 @@
 
 import type { FastifyPluginAsync } from "fastify";
 
-// name -> a function that succeeds if that dependency is reachable
+// succeeds if dependency is reachable
 export type HealthChecks = Record<string, () => Promise<unknown>>;
 
 const CHECK_TIMEOUT_MS = 2000;
 
-// A dependency that hangs must not make /health hang too.
+// timeOut to mitigate a hanging dependency
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -35,7 +35,7 @@ export const healthRoutes =
 
       const healthy = results.every(([, status]) => status === "ok");
 
-      // 503 tells load balancers "don't send traffic here"
+      // cutoff traffic and send 503
       reply.code(healthy ? 200 : 503);
       return {
         status: healthy ? "ok" : "degraded",

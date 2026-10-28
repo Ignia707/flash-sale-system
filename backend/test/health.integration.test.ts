@@ -1,38 +1,36 @@
-import { afterAll, describe, expect, it } from 'vitest';
-import { buildApp } from '../src/api/app.ts';
-import { loadConfig } from '../src/lib/config.ts';
-import { createPool } from '../src/lib/db.ts';
-import { createRedis } from '../src/lib/redis.ts';
+import { afterAll, describe, expect, it } from "vitest";
+import { buildApp } from "../src/api/app.ts";
+import { loadConfig } from "../src/lib/config.ts";
+import { createPool } from "../src/lib/db.ts";
+import { createRedis } from "../src/lib/redis.ts";
 
-// INTEGRATION TEST: uses the REAL Postgres and Redis from podman-compose.
-// It proves our connection code and settings actually work together.
-// (Needs `podman-compose up -d` first.)
-describe('GET /health (real Postgres and Redis)', () => {
+// INTEGRATION TEST
+describe("GET /health (real Postgres and Redis)", () => {
   const config = loadConfig();
   const pool = createPool(config.postgres);
   const redis = createRedis(config.redis);
 
   const app = buildApp({
     checks: {
-      postgres: () => pool.query('SELECT 1'),
+      postgres: () => pool.query("SELECT 1"),
       redis: () => redis.ping(),
     },
   });
 
-  // close connections after the tests, or the test run never exits
+  // close connections after the tests
   afterAll(async () => {
     await app.close();
     await pool.end();
     redis.disconnect();
   });
 
-  it('reports both dependencies as ok', async () => {
-    const response = await app.inject({ method: 'GET', url: '/health' });
+  it("reports both dependencies as ok", async () => {
+    const response = await app.inject({ method: "GET", url: "/health" });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      status: 'ok',
-      checks: { postgres: 'ok', redis: 'ok' },
+      status: "ok",
+      checks: { postgres: "ok", redis: "ok" },
     });
   });
 });
