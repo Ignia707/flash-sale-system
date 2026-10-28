@@ -21,7 +21,7 @@ function fakeQueue() {
 function appWhereGateSays(result: ReserveResult, queue = fakeQueue().queue) {
   return buildApp({
     checks: {},
-    gate: { reserve: async () => result },
+    gate: { reserve: async () => result, release: async () => true },
     queue,
     orders: { statusOf: async () => "processing" as const },
   });
@@ -90,6 +90,7 @@ describe("POST /api/checkout (fake gate, fake queue)", () => {
           calls.push(args);
           return "reserved";
         },
+        release: async () => true,
       },
       queue: fakeQueue().queue,
       orders: { statusOf: async () => "processing" as const },
@@ -123,5 +124,75 @@ describe("POST /api/checkout (fake gate, fake queue)", () => {
     const response = await checkout(appWhereGateSays("reserved"), { payload });
 
     expect(response.statusCode).toBe(400);
+  });
+
+  it("answers 503 and queues nothing when the gate is down", async () => {
+    const { queue, published } = fakeQueue();
+    const app = buildApp({
+      checks: {},
+      gate: {
+        reserve: async () => {
+          throw new Error("redis down");
+        },
+        release: async () => true,
+      },
+      queue,
+      orders: { statusOf: async () => "processing" as const },
+    });
+
+    const response = await checkout(app);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.headers["retry-after"]).toBe("1");
+    expect(published).toEqual([]);
+  });
+
+  it("answers 503 and gives the token back when the queue is down", async () => {
+    const released: unknown[][] = [];
+    const app = buildApp({
+      checks: {},
+      gate: {
+        reserve: async () => "reserved" as const,
+        release: async (...args) => {
+          released.push(args);
+          return true;
+        },
+      },
+      queue: {
+        publish: async () => {
+          throw new Error("rabbitmq down");
+        },
+      },
+      orders: { statusOf: async () => "processing" as const },
+    });
+
+    const response = await checkout(app, {
+      headers: { "x-user-id": "alice" },
+      payload: { productId: 7 },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ status: "unavailable" });
+    expect(released).toEqual([[7, "alice"]]);
+  });
+
+  it("still answers 503 if giving the token back fails too", async () => {
+    const app = buildApp({
+      checks: {},
+      gate: {
+        reserve: async () => "reserved" as const,
+        release: async () => {
+          throw new Error("redis down");
+        },
+      },
+      queue: {
+        publish: async () => {
+          throw new Error("rabbitmq down");
+        },
+      },
+      orders: { statusOf: async () => "processing" as const },
+    });
+
+    expect((await checkout(app)).statusCode).toBe(503);
   });
 });

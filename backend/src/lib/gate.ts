@@ -19,10 +19,24 @@ redis.call('SADD', KEYS[2], ARGV[1])
 return stock - 1
 `;
 
-// decalare the command to be registerd
+// Gives a token back, but only if this user really holds one (so stock can't inflate)
+const RELEASE_LUA = `
+if redis.call('SREM', KEYS[2], ARGV[1]) == 1 then
+  redis.call('INCR', KEYS[1])
+  return 1
+end
+return 0
+`;
+
+// decalare the commands to be registerd
 declare module "ioredis" {
   interface RedisCommander<Context> {
     reserveStock(
+      stockKey: string,
+      buyersKey: string,
+      userId: string,
+    ): Promise<number>;
+    releaseStock(
       stockKey: string,
       buyersKey: string,
       userId: string,
@@ -38,6 +52,7 @@ export type Gate = ReturnType<typeof createGate>;
 export function createGate(redis: Redis) {
   // the script is sent to Redis once ---> called by its hash
   redis.defineCommand("reserveStock", { numberOfKeys: 2, lua: RESERVE_LUA });
+  redis.defineCommand("releaseStock", { numberOfKeys: 2, lua: RELEASE_LUA });
 
   return {
     async reserve(productId: number, userId: string): Promise<ReserveResult> {
@@ -51,13 +66,28 @@ export function createGate(redis: Redis) {
       return "reserved";
     },
 
-    // reset the stock and clear records of previous buyers
-    async reset(productId: number, stock: number): Promise<void> {
-      await redis
+    // true if a token went back to the pool, false if this user held none
+    async release(productId: number, userId: string): Promise<boolean> {
+      const code = await redis.releaseStock(
+        stockKey(productId),
+        buyersKey(productId),
+        userId,
+      );
+      return code === 1;
+    },
+
+    // set the stock and replace the record of buyers (none, unless given)
+    async reset(
+      productId: number,
+      stock: number,
+      buyers: string[] = [],
+    ): Promise<void> {
+      const tx = redis
         .multi()
         .set(stockKey(productId), stock)
-        .del(buyersKey(productId))
-        .exec();
+        .del(buyersKey(productId));
+      if (buyers.length > 0) tx.sadd(buyersKey(productId), ...buyers);
+      await tx.exec();
     },
 
     async remove(productId: number): Promise<void> {

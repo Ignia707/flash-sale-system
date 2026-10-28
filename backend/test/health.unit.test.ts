@@ -5,7 +5,10 @@ import { buildApp } from "../src/api/app.ts";
 describe("GET /health (with fake dependencies)", () => {
   it("returns 200 when every dependency is up", async () => {
     const app = buildApp({
-      gate: { reserve: async () => "reserved" as const },
+      gate: {
+        reserve: async () => "reserved" as const,
+        release: async () => true,
+      },
       queue: { publish: async () => {} },
       orders: { statusOf: async () => "processing" as const },
       checks: {
@@ -26,7 +29,10 @@ describe("GET /health (with fake dependencies)", () => {
 
   it("returns 503 and names the dependency that is down", async () => {
     const app = buildApp({
-      gate: { reserve: async () => "reserved" as const },
+      gate: {
+        reserve: async () => "reserved" as const,
+        release: async () => true,
+      },
       queue: { publish: async () => {} },
       orders: { statusOf: async () => "processing" as const },
       checks: {

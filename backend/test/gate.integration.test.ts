@@ -51,4 +51,20 @@ describe("Redis gate", () => {
 
     expect(await gate.reserve(PRODUCT_ID, "user-1")).toBe("sold_out");
   });
+
+  it("takes a token back so someone else can use it", async () => {
+    await gate.reserve(PRODUCT_ID, "alice");
+
+    expect(await gate.release(PRODUCT_ID, "alice")).toBe(true);
+
+    expect(await gate.stockLeft(PRODUCT_ID)).toBe(STOCK);
+    expect(await gate.buyerCount(PRODUCT_ID)).toBe(0);
+    expect(await gate.reserve(PRODUCT_ID, "alice")).toBe("reserved"); // may try again
+  });
+
+  it("gives nothing back to a user who holds no token", async () => {
+    expect(await gate.release(PRODUCT_ID, "stranger")).toBe(false);
+
+    expect(await gate.stockLeft(PRODUCT_ID)).toBe(STOCK); // stock must not grow
+  });
 });

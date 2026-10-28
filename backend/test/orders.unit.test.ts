@@ -8,7 +8,10 @@ import type { OrderStatus } from "../src/lib/orders.ts";
 function appWhereOrderIs(status: OrderStatus, asked: string[] = []) {
   return buildApp({
     checks: {},
-    gate: { reserve: async () => "reserved" as const },
+    gate: {
+        reserve: async () => "reserved" as const,
+        release: async () => true,
+      },
     queue: { publish: async () => {} },
     orders: {
       statusOf: async (id) => {

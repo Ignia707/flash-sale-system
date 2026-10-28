@@ -1,7 +1,7 @@
 // INTEGRATION TEST: real RabbitMQ --> messages arrive intact, none are lost, failed ones are retried
 
 import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../src/lib/config.ts";
 import {
   createQueue,
@@ -23,6 +23,7 @@ describe("order queue", () => {
     queue = await createQueue(
       loadConfig().rabbitmq,
       `test.orders.${randomUUID()}`,
+      { maxAttempts: 3, retryDelayMs: 0 },
     );
   });
 
@@ -73,5 +74,19 @@ describe("order queue", () => {
     await done;
 
     expect(attempts).toBe(2);
+  });
+
+  it("parks a message that keeps failing in the dead-letter queue", async () => {
+    let attempts = 0;
+    await queue.consume(async () => {
+      attempts++;
+      throw new Error("always fails");
+    });
+
+    await queue.publish(order(1));
+
+    await vi.waitFor(async () => expect(await queue.deadDepth()).toBe(1));
+    expect(attempts).toBe(3); // maxAttempts, then no more retries
+    expect(await queue.depth()).toBe(0);
   });
 });

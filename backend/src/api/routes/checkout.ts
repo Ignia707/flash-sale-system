@@ -6,7 +6,7 @@ import type { Gate, ReserveResult } from "../../lib/gate.ts";
 import type { OrderQueue } from "../../lib/queue.ts";
 
 // the route only needs reserve(), so tests can pass a tiny fake
-export type Reserver = Pick<Gate, "reserve">;
+export type Reserver = Pick<Gate, "reserve" | "release">;
 export type Publisher = Pick<OrderQueue, "publish">;
 
 const STATUS_CODE = {
@@ -42,13 +42,32 @@ export const checkoutRoutes =
       const { productId } = request.body;
       const userId = request.headers["x-user-id"];
 
-      const result = await gate.reserve(productId, userId);
+      // a dependency is down --> tell the client to retry, never a bare 500
+      const unavailable = () => {
+        reply.header("retry-after", "1").code(503);
+        return { status: "unavailable" };
+      };
 
-      // only a token holder gets an order - undefined is left out of the JSON
+      let result: ReserveResult;
+      try {
+        result = await gate.reserve(productId, userId);
+      } catch (err) {
+        request.log.error({ err }, "gate unavailable");
+        return unavailable();
+      }
+
+      // only a token holder gets an order; undefined is left out of the JSON
       let orderId: string | undefined;
       if (result === "reserved") {
         orderId = randomUUID();
-        await queue.publish({ orderId, userId, productId });
+        try {
+          await queue.publish({ orderId, userId, productId });
+        } catch (err) {
+          // the order is not stored --> give the token back so someone else can use it
+          request.log.error({ err }, "queue unavailable, releasing token");
+          await gate.release(productId, userId).catch(() => {}); // reconcile fixes it if this fails too
+          return unavailable();
+        }
       }
 
       reply.code(STATUS_CODE[result]);
