@@ -23,6 +23,7 @@ describe("copyStockToRedis", () => {
   });
 
   afterEach(async () => {
+    await pool.query("DELETE FROM orders WHERE product_id = $1", [productId]);
     await pool.query("DELETE FROM products WHERE id = $1", [productId]);
     await gate.remove(productId);
   });
@@ -38,14 +39,27 @@ describe("copyStockToRedis", () => {
     expect(await gate.stockLeft(productId)).toBe(7);
   });
 
-  it("replaces a wrong Redis value and forgets old buyers", async () => {
+  it("replaces a wrong Redis value and drops buyers that have no order", async () => {
     await gate.reset(productId, 99);
-    await gate.reserve(productId, "old-buyer");
+    await gate.reserve(productId, "never-saved");
 
     await copyStockToRedis(pool, gate, productId);
 
     expect(await gate.stockLeft(productId)).toBe(7);
     expect(await gate.buyerCount(productId)).toBe(0);
+  });
+
+  it("remembers who already has an order, so they cannot buy twice after a rebuild", async () => {
+    await pool.query(
+      `INSERT INTO orders (user_id, product_id, status) VALUES
+         ('alice', $1, 'confirmed'), ('bob', $1, 'failed')`,
+      [productId],
+    );
+
+    await copyStockToRedis(pool, gate, productId);
+
+    expect(await gate.reserve(productId, "alice")).toBe("already_reserved");
+    expect(await gate.reserve(productId, "bob")).toBe("reserved"); // his order failed
   });
 
   it("refuses a product that does not exist", async () => {

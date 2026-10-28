@@ -15,7 +15,8 @@
     "demo:oversell": "node --env-file=../.env src/scripts/oversell-demo.ts",
     "worker": "node --env-file=../.env src/worker/main.ts",
     "seed": "node --env-file=../.env src/scripts/seed.ts",
-    "reconcile": "node --env-file=../.env src/scripts/reconcile.ts"
+    "reconcile": "node --env-file=../.env src/scripts/reconcile.ts",
+    "replay-dead": "node --env-file=../.env src/scripts/replay-dead.ts"
   },
   "dependencies": {
     "@fastify/jwt": "^10.2.5",

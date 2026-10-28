@@ -134,6 +134,19 @@ export async function createQueue(
       if (channel) await startConsuming(channel, handler, prefetch);
     },
 
+    // moves every parked message back to the main queue for a fresh round of attempts
+    async replayDead(): Promise<number> {
+      if (!channel) throw new Error("queue is not connected");
+      let moved = 0;
+      for (;;) {
+        const msg = await channel.get(deadName);
+        if (!msg) return moved; // nothing left
+        await send(name, msg.content);
+        channel.ack(msg);
+        moved++;
+      }
+    },
+
     depth: () => depthOf(name),
     deadDepth: () => depthOf(deadName),
 

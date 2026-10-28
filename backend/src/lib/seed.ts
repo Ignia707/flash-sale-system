@@ -16,7 +16,8 @@ export async function startFreshSale(
   return rows[0].id;
 }
 
-// Postgres is the source of truth --> Redis tokens are rebuilt from it
+// Postgres is the source of truth --> Redis tokens AND buyers are rebuilt from it.
+// Run it only when the queue is empty (queued orders are not in Postgres yet).
 export async function copyStockToRedis(
   pool: Pool,
   gate: Pick<Gate, "reset">,
@@ -28,6 +29,15 @@ export async function copyStockToRedis(
   );
   if (rows.length === 0) throw new Error(`Product ${productId} not found`);
 
-  await gate.reset(productId, rows[0].stock);
+  // buyers who already hold an order must not get a second token (failed orders hold none)
+  const buyers = await pool.query(
+    "SELECT user_id FROM orders WHERE product_id = $1 AND status <> 'failed'",
+    [productId],
+  );
+  await gate.reset(
+    productId,
+    rows[0].stock,
+    buyers.rows.map((r) => r.user_id),
+  );
   return rows[0].stock;
 }

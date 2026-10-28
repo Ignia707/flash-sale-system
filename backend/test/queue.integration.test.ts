@@ -89,4 +89,21 @@ describe("order queue", () => {
     expect(attempts).toBe(3); // maxAttempts, then no more retries
     expect(await queue.depth()).toBe(0);
   });
+
+  it("replays parked messages once the problem is fixed", async () => {
+    let broken = true;
+    const handled: string[] = [];
+    await queue.consume(async (o) => {
+      if (broken) throw new Error("database down");
+      handled.push(o.orderId);
+    });
+    await queue.publish(order(1));
+    await vi.waitFor(async () => expect(await queue.deadDepth()).toBe(1));
+
+    broken = false;
+    expect(await queue.replayDead()).toBe(1);
+
+    await vi.waitFor(() => expect(handled).toEqual(["order-1"]));
+    expect(await queue.deadDepth()).toBe(0);
+  });
 });
