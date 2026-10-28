@@ -11,6 +11,7 @@ describe("GET /health (real Postgres and Redis)", () => {
   const redis = createRedis(config.redis);
 
   const app = buildApp({
+    gate: { reserve: async () => "reserved" as const },
     checks: {
       postgres: () => pool.query("SELECT 1"),
       redis: () => redis.ping(),

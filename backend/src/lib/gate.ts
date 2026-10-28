@@ -33,6 +33,8 @@ declare module "ioredis" {
 const stockKey = (productId: number) => `stock:${productId}`;
 const buyersKey = (productId: number) => `buyers:${productId}`;
 
+export type Gate = ReturnType<typeof createGate>;
+
 export function createGate(redis: Redis) {
   // the script is sent to Redis once ---> called by its hash
   redis.defineCommand("reserveStock", { numberOfKeys: 2, lua: RESERVE_LUA });
