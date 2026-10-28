@@ -4,8 +4,8 @@ import { loadConfig } from "../lib/config.ts";
 import { createPool } from "../lib/db.ts";
 import { buyNaive } from "../lib/inventory.ts";
 
-const STOCK = 50;
-const BUYERS = 200;
+const STOCK = 500;
+const BUYERS = 10000;
 
 const pool = createPool(loadConfig().postgres);
 

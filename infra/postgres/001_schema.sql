@@ -15,6 +15,6 @@ CREATE TABLE IF NOT EXISTS orders (
   status     TEXT NOT NULL DEFAULT 'pending'
              CHECK (status IN ('pending', 'confirmed', 'failed')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  -- one phone per user, enforced by the database
+  -- one product-item per user, enforced by the database
   UNIQUE (user_id, product_id)
 );
