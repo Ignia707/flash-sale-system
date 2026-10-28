@@ -1,10 +1,13 @@
-// POST /api/checkout: asks the Redis gate for a token and answers immediately
+// POST /api/checkout: asks the Redis gate for a token, queues the order, answers immediately
 
+import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import type { Gate, ReserveResult } from "../../lib/gate.ts";
+import type { OrderQueue } from "../../lib/queue.ts";
 
 // the route only needs reserve(), so tests can pass a tiny fake
 export type Reserver = Pick<Gate, "reserve">;
+export type Publisher = Pick<OrderQueue, "publish">;
 
 const STATUS_CODE = {
   reserved: 202, // Accepted
@@ -30,7 +33,7 @@ const schema = {
 } as const;
 
 export const checkoutRoutes =
-  (gate: Reserver): FastifyPluginAsync =>
+  (gate: Reserver, queue: Publisher): FastifyPluginAsync =>
   async (app) => {
     app.post<{
       Body: { productId: number };
@@ -41,7 +44,14 @@ export const checkoutRoutes =
 
       const result = await gate.reserve(productId, userId);
 
+      // only a token holder gets an order - undefined is left out of the JSON
+      let orderId: string | undefined;
+      if (result === "reserved") {
+        orderId = randomUUID();
+        await queue.publish({ orderId, userId, productId });
+      }
+
       reply.code(STATUS_CODE[result]);
-      return { status: result };
+      return { status: result, orderId };
     });
   };
