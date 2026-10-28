@@ -11,7 +11,8 @@
     "start": "node --env-file=../.env src/api/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "demo:oversell": "node --env-file=../.env src/scripts/oversell-demo.ts"
   },
   "dependencies": {
     "fastify": "^5.12.7",
