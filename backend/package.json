@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "demo:oversell": "node --env-file=../.env src/scripts/oversell-demo.ts",
+    "worker": "node --env-file=../.env src/worker/main.ts",
     "seed": "node --env-file=../.env src/scripts/seed.ts"
   },
   "dependencies": {
