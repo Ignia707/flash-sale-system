@@ -10,6 +10,7 @@ import { createOrderStore } from "../src/lib/orders.ts";
 import { createQueue, type OrderQueue } from "../src/lib/queue.ts";
 import { createRedis } from "../src/lib/redis.ts";
 import { startWorker } from "../src/worker/worker.ts";
+import { TEST_SECRET } from "./helpers.ts";
 
 const STOCK = 2;
 
@@ -34,6 +35,7 @@ describe("order flow, end to end", () => {
     queue = await createQueue(config.rabbitmq, `test.flow.${randomUUID()}`);
     await startWorker(pool, queue);
     app = buildApp({
+      jwtSecret: TEST_SECRET,
       checks: {},
       gate,
       queue,
@@ -55,20 +57,24 @@ describe("order flow, end to end", () => {
     redis.disconnect();
   });
 
-  const buy = (userId: string) =>
-    app.inject({
-      method: "POST",
-      url: "/api/checkout",
-      headers: { "x-user-id": userId },
-      payload: { productId },
-    });
+  // a visitor: gets a guest token like the browser would, then buys with it
+  async function visitor() {
+    const { token } = (await app.inject({ method: "POST", url: "/api/session" })).json();
+    const headers = { authorization: `Bearer ${token}` };
+    return {
+      headers,
+      buy: () =>
+        app.inject({ method: "POST", url: "/api/checkout", headers, payload: { productId } }),
+    };
+  }
 
   // the worker runs in the background: ask until the answer is final
-  async function waitForFinalStatus(orderId: string): Promise<string> {
+  async function waitForFinalStatus(orderId: string, headers: { authorization: string }): Promise<string> {
     for (let i = 0; i < 50; i++) {
       const response = await app.inject({
         method: "GET",
         url: `/api/orders/${orderId}`,
+        headers,
       });
       if (response.json().status !== "processing") return response.json().status;
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -77,21 +83,35 @@ describe("order flow, end to end", () => {
   }
 
   it("turns accepted purchases into confirmed orders and nothing more", async () => {
-    const responses = await Promise.all(
-      ["alice", "bob", "carol"].map((user) => buy(user)),
+    const attempts = await Promise.all(
+      [1, 2, 3].map(async () => {
+        const v = await visitor();
+        return { v, response: await v.buy() };
+      }),
     );
-    const accepted = responses.filter((r) => r.statusCode === 202);
+    const accepted = attempts.filter((a) => a.response.statusCode === 202);
 
     expect(accepted).toHaveLength(STOCK);
-    expect(responses.filter((r) => r.statusCode === 410)).toHaveLength(1);
+    expect(attempts.filter((a) => a.response.statusCode === 410)).toHaveLength(1);
 
-    for (const response of accepted) {
-      expect(await waitForFinalStatus(response.json().orderId)).toBe("confirmed");
+    for (const { v, response } of accepted) {
+      expect(await waitForFinalStatus(response.json().orderId, v.headers)).toBe("confirmed");
     }
-    const { rows } = await pool.query(
-      "SELECT stock FROM products WHERE id = $1",
-      [productId],
-    );
+    const { rows } = await pool.query("SELECT stock FROM products WHERE id = $1", [productId]);
     expect(rows[0].stock).toBe(0);
+  });
+
+  it("shows an order only to the visitor who bought it", async () => {
+    const [buyer, other] = await Promise.all([visitor(), visitor()]);
+    const { orderId } = (await buyer.buy()).json();
+    await waitForFinalStatus(orderId, buyer.headers);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/orders/${orderId}`,
+      headers: other.headers,
+    });
+
+    expect(response.json().status).toBe("processing");
   });
 });

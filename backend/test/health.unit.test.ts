@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/api/app.ts";
+import { TEST_SECRET } from "./helpers.ts";
 
 // UNIT TEST with fakes
 describe("GET /health (with fake dependencies)", () => {
   it("returns 200 when every dependency is up", async () => {
     const app = buildApp({
+      jwtSecret: TEST_SECRET,
       gate: {
         reserve: async () => "reserved" as const,
         release: async () => true,
@@ -29,6 +31,7 @@ describe("GET /health (with fake dependencies)", () => {
 
   it("returns 503 and names the dependency that is down", async () => {
     const app = buildApp({
+      jwtSecret: TEST_SECRET,
       gate: {
         reserve: async () => "reserved" as const,
         release: async () => true,

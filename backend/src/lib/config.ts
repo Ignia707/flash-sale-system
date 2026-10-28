@@ -16,6 +16,26 @@ function requiredInt(name: string): number {
   return value;
 }
 
+// shorter than this is guessable
+function requiredSecret(name: string): string {
+  const value = required(name);
+  if (value.length < 16) {
+    throw new Error(`Environment variable ${name} must be at least 16 characters`);
+  }
+  return value;
+}
+
+// no value --> undefined; a value that is not a date --> fail
+function optionalDate(name: string): Date | undefined {
+  const value = process.env[name];
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Environment variable ${name} must be a date like 2026-11-01T10:00:00Z`);
+  }
+  return date;
+}
+
 export function loadConfig() {
   return {
     api: {
@@ -31,6 +51,12 @@ export function loadConfig() {
     redis: {
       host: required("REDIS_HOST"),
       port: requiredInt("REDIS_PORT"),
+    },
+    auth: {
+      jwtSecret: requiredSecret("JWT_SECRET"),
+    },
+    sale: {
+      startsAt: optionalDate("SALE_STARTS_AT"), // unset = open all the time
     },
     rabbitmq: {
       host: required("RABBITMQ_HOST"),

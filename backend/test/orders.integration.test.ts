@@ -40,15 +40,23 @@ describe("order store", () => {
   it.each(["confirmed", "failed"] as const)(
     "reports a saved %s order",
     async (status) => {
-      expect(await store.statusOf(await saveOrder(status))).toBe(status);
+      expect(await store.statusOf(await saveOrder(status), "u1")).toBe(status);
     },
   );
 
   it("reports a pending row as still processing", async () => {
-    expect(await store.statusOf(await saveOrder("pending"))).toBe("processing");
+    expect(await store.statusOf(await saveOrder("pending"), "u1")).toBe(
+      "processing",
+    );
   });
 
   it("reports an id it has never seen as processing", async () => {
-    expect(await store.statusOf(randomUUID())).toBe("processing");
+    expect(await store.statusOf(randomUUID(), "u1")).toBe("processing");
+  });
+
+  it("hides an order from anyone but its owner", async () => {
+    const id = await saveOrder("confirmed"); // belongs to u1
+
+    expect(await store.statusOf(id, "someone-else")).toBe("processing");
   });
 });

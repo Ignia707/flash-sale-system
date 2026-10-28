@@ -21,6 +21,8 @@ const app = buildApp({
   gate,
   queue,
   orders,
+  jwtSecret: config.auth.jwtSecret,
+  saleStartsAt: config.sale.startsAt,
   checks: {
     postgres: () => pool.query("SELECT 1"),
     redis: () => redis.ping(),

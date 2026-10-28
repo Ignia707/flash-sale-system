@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import type { Gate, ReserveResult } from "../../lib/gate.ts";
 import type { OrderQueue } from "../../lib/queue.ts";
+import { hasStarted, type Sale } from "../../lib/sale.ts";
+import { authenticate } from "../auth.ts";
 
 // the route only needs reserve(), so tests can pass a tiny fake
 export type Reserver = Pick<Gate, "reserve" | "release">;
@@ -17,13 +19,6 @@ const STATUS_CODE = {
 
 // Fastify rejects requests that don't match - with a 400, prior to code run
 const schema = {
-  headers: {
-    type: "object",
-    required: ["x-user-id"],
-    properties: {
-      "x-user-id": { type: "string", minLength: 1, maxLength: 64 },
-    },
-  },
   body: {
     type: "object",
     required: ["productId"],
@@ -33,14 +28,19 @@ const schema = {
 } as const;
 
 export const checkoutRoutes =
-  (gate: Reserver, queue: Publisher): FastifyPluginAsync =>
+  (gate: Reserver, queue: Publisher, sale: Sale): FastifyPluginAsync =>
   async (app) => {
-    app.post<{
-      Body: { productId: number };
-      Headers: { "x-user-id": string };
-    }>("/api/checkout", { schema }, async (request, reply) => {
+    app.post<{ Body: { productId: number } }>(
+      "/api/checkout",
+      { schema, onRequest: authenticate },
+      async (request, reply) => {
       const { productId } = request.body;
-      const userId = request.headers["x-user-id"];
+      const userId = request.user.sub; // from the verified token, not from anything the client types
+
+      if (!hasStarted(sale)) {
+        reply.code(403);
+        return { status: "not_started", startsAt: sale.startsAt?.toISOString() };
+      }
 
       // a dependency is down --> tell the client to retry, never a bare 500
       const unavailable = () => {
@@ -72,5 +72,6 @@ export const checkoutRoutes =
 
       reply.code(STATUS_CODE[result]);
       return { status: result, orderId };
-    });
+      },
+    );
   };

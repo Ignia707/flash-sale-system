@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/api/app.ts";
+import { TEST_SECRET } from "./helpers.ts";
 import { loadConfig } from "../src/lib/config.ts";
 import { createPool } from "../src/lib/db.ts";
 import { createRedis } from "../src/lib/redis.ts";
@@ -11,6 +12,8 @@ describe("GET /health (real Postgres and Redis)", () => {
   const redis = createRedis(config.redis);
 
   const app = buildApp({
+
+    jwtSecret: TEST_SECRET,
     gate: {
         reserve: async () => "reserved" as const,
         release: async () => true,

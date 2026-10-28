@@ -1,9 +1,10 @@
-// UNIT TEST with a fake gate and fake queue: checks how the route turns gate answers and bad input into responses and messages
+// UNIT TEST with a fake gate and fake queue: checks how the route turns tokens, gate answers and bad input into responses and messages
 
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/api/app.ts";
 import type { ReserveResult } from "../src/lib/gate.ts";
 import type { OrderMessage } from "../src/lib/queue.ts";
+import { asGuest, TEST_SECRET } from "./helpers.ts";
 
 // a fake queue that just records what was published
 function fakeQueue() {
@@ -18,24 +19,37 @@ function fakeQueue() {
   };
 }
 
-function appWhereGateSays(result: ReserveResult, queue = fakeQueue().queue) {
+const orders = { statusOf: async () => "processing" as const };
+
+function appWith(
+  gate: Parameters<typeof buildApp>[0]["gate"],
+  extra: Partial<Parameters<typeof buildApp>[0]> = {},
+) {
   return buildApp({
+    jwtSecret: TEST_SECRET,
     checks: {},
-    gate: { reserve: async () => result, release: async () => true },
-    queue,
-    orders: { statusOf: async () => "processing" as const },
+    gate,
+    queue: fakeQueue().queue,
+    orders,
+    ...extra,
   });
 }
 
-function checkout(
+const gateSaying = (result: ReserveResult) => ({
+  reserve: async () => result,
+  release: async () => true,
+});
+
+async function checkout(
   app: ReturnType<typeof buildApp>,
-  options: { headers?: Record<string, string>; payload?: unknown } = {},
+  options: { user?: string | null; payload?: unknown } = {},
 ) {
+  const { user = "u1", payload = { productId: 1 } } = options;
   return app.inject({
     method: "POST",
     url: "/api/checkout",
-    headers: options.headers ?? { "x-user-id": "u1" },
-    payload: (options.payload ?? { productId: 1 }) as object,
+    headers: user === null ? {} : await asGuest(app, user),
+    payload: payload as object,
   });
 }
 
@@ -48,7 +62,7 @@ describe("POST /api/checkout (fake gate, fake queue)", () => {
     async (result, code) => {
       const { queue, published } = fakeQueue();
 
-      const response = await checkout(appWhereGateSays(result, queue));
+      const response = await checkout(appWith(gateSaying(result), { queue }));
 
       expect(response.statusCode).toBe(code);
       expect(response.json()).toEqual({ status: result });
@@ -58,10 +72,10 @@ describe("POST /api/checkout (fake gate, fake queue)", () => {
 
   it("when the gate reserves, responds 202 with an order id and queues that order", async () => {
     const { queue, published } = fakeQueue();
-    const app = appWhereGateSays("reserved", queue);
+    const app = appWith(gateSaying("reserved"), { queue });
 
     const response = await checkout(app, {
-      headers: { "x-user-id": "alice" },
+      user: "alice",
       payload: { productId: 7 },
     });
 
@@ -73,7 +87,7 @@ describe("POST /api/checkout (fake gate, fake queue)", () => {
   });
 
   it("gives every order its own id", async () => {
-    const app = appWhereGateSays("reserved");
+    const app = appWith(gateSaying("reserved"));
 
     const first = (await checkout(app)).json().orderId;
     const second = (await checkout(app)).json().orderId;
@@ -81,64 +95,140 @@ describe("POST /api/checkout (fake gate, fake queue)", () => {
     expect(first).not.toBe(second);
   });
 
-  it("passes the product and user to the gate", async () => {
+  it("takes the user from the token and the product from the body", async () => {
     const calls: unknown[][] = [];
-    const app = buildApp({
-      checks: {},
-      gate: {
-        reserve: async (...args) => {
-          calls.push(args);
-          return "reserved";
-        },
-        release: async () => true,
+    const app = appWith({
+      reserve: async (...args) => {
+        calls.push(args);
+        return "reserved";
       },
-      queue: fakeQueue().queue,
-      orders: { statusOf: async () => "processing" as const },
+      release: async () => true,
     });
 
-    await checkout(app, {
-      headers: { "x-user-id": "alice" },
+    await checkout(app, { user: "alice", payload: { productId: 7 } });
+
+    expect(calls).toEqual([[7, "alice"]]);
+  });
+
+  it("ignores a user id the client tries to type in", async () => {
+    const calls: unknown[][] = [];
+    const app = appWith({
+      reserve: async (...args) => {
+        calls.push(args);
+        return "reserved";
+      },
+      release: async () => true,
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/checkout",
+      headers: { ...(await asGuest(app, "alice")), "x-user-id": "mallory" },
       payload: { productId: 7 },
     });
 
     expect(calls).toEqual([[7, "alice"]]);
   });
 
-  it("rejects a request without a user id", async () => {
-    const { queue, published } = fakeQueue();
+  describe("identity", () => {
+    it("rejects a request without a token", async () => {
+      const { queue, published } = fakeQueue();
 
-    const response = await checkout(appWhereGateSays("reserved", queue), {
-      headers: {},
+      const response = await checkout(appWith(gateSaying("reserved"), { queue }), {
+        user: null,
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(published).toEqual([]);
     });
 
-    expect(response.statusCode).toBe(400);
-    expect(published).toEqual([]);
+    it("rejects a token signed with another secret", async () => {
+      const forger = appWith(gateSaying("reserved"), { jwtSecret: "another-secret-16-chars!!" });
+      const target = appWith(gateSaying("reserved"));
+      await forger.ready();
+
+      const response = await target.inject({
+        method: "POST",
+        url: "/api/checkout",
+        headers: { authorization: `Bearer ${forger.jwt.sign({ sub: "mallory" })}` },
+        payload: { productId: 1 },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it("rejects an expired token", async () => {
+      const app = appWith(gateSaying("reserved"));
+      await app.ready();
+      const token = app.jwt.sign({ sub: "alice" }, { expiresIn: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/checkout",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { productId: 1 },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
   });
 
-  it.each([
-    {},
-    { productId: "abc" },
-    { productId: 0 },
-    { productId: 1, extra: true },
-  ])("rejects an invalid body %j", async (payload) => {
-    const response = await checkout(appWhereGateSays("reserved"), { payload });
+  describe("sale window", () => {
+    const opensAt = new Date("2026-11-01T10:00:00Z");
 
-    expect(response.statusCode).toBe(400);
+    it("refuses before the sale starts, without touching the gate", async () => {
+      const calls: unknown[][] = [];
+      const app = appWith(
+        {
+          reserve: async (...args) => {
+            calls.push(args);
+            return "reserved";
+          },
+          release: async () => true,
+        },
+        { saleStartsAt: opensAt, now: () => opensAt.getTime() - 1 },
+      );
+
+      const response = await checkout(app);
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({
+        status: "not_started",
+        startsAt: "2026-11-01T10:00:00.000Z",
+      });
+      expect(calls).toEqual([]);
+    });
+
+    it("accepts from the very moment the sale starts", async () => {
+      const app = appWith(gateSaying("reserved"), {
+        saleStartsAt: opensAt,
+        now: () => opensAt.getTime(),
+      });
+
+      expect((await checkout(app)).statusCode).toBe(202);
+    });
+  });
+
+  it("rejects an invalid body", async () => {
+    for (const payload of [{}, { productId: "abc" }, { productId: 0 }, { productId: 1, extra: true }]) {
+      const response = await checkout(appWith(gateSaying("reserved")), { payload });
+
+      expect(response.statusCode, JSON.stringify(payload)).toBe(400);
+    }
   });
 
   it("answers 503 and queues nothing when the gate is down", async () => {
     const { queue, published } = fakeQueue();
-    const app = buildApp({
-      checks: {},
-      gate: {
+    const app = appWith(
+      {
         reserve: async () => {
           throw new Error("redis down");
         },
         release: async () => true,
       },
-      queue,
-      orders: { statusOf: async () => "processing" as const },
-    });
+      { queue },
+    );
 
     const response = await checkout(app);
 
@@ -149,27 +239,24 @@ describe("POST /api/checkout (fake gate, fake queue)", () => {
 
   it("answers 503 and gives the token back when the queue is down", async () => {
     const released: unknown[][] = [];
-    const app = buildApp({
-      checks: {},
-      gate: {
+    const app = appWith(
+      {
         reserve: async () => "reserved" as const,
         release: async (...args) => {
           released.push(args);
           return true;
         },
       },
-      queue: {
-        publish: async () => {
-          throw new Error("rabbitmq down");
+      {
+        queue: {
+          publish: async () => {
+            throw new Error("rabbitmq down");
+          },
         },
       },
-      orders: { statusOf: async () => "processing" as const },
-    });
+    );
 
-    const response = await checkout(app, {
-      headers: { "x-user-id": "alice" },
-      payload: { productId: 7 },
-    });
+    const response = await checkout(app, { user: "alice", payload: { productId: 7 } });
 
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({ status: "unavailable" });
@@ -177,21 +264,21 @@ describe("POST /api/checkout (fake gate, fake queue)", () => {
   });
 
   it("still answers 503 if giving the token back fails too", async () => {
-    const app = buildApp({
-      checks: {},
-      gate: {
+    const app = appWith(
+      {
         reserve: async () => "reserved" as const,
         release: async () => {
           throw new Error("redis down");
         },
       },
-      queue: {
-        publish: async () => {
-          throw new Error("rabbitmq down");
+      {
+        queue: {
+          publish: async () => {
+            throw new Error("rabbitmq down");
+          },
         },
       },
-      orders: { statusOf: async () => "processing" as const },
-    });
+    );
 
     expect((await checkout(app)).statusCode).toBe(503);
   });

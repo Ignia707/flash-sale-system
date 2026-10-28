@@ -26,4 +26,28 @@ describe("loadConfig", () => {
 
     expect(() => loadConfig()).toThrow("API_PORT must be an integer");
   });
+
+  it("refuses a JWT secret that is too short", () => {
+    vi.stubEnv("JWT_SECRET", "short");
+
+    expect(() => loadConfig()).toThrow("JWT_SECRET must be at least 16 characters");
+  });
+
+  it("reads the optional sale start time", () => {
+    vi.stubEnv("SALE_STARTS_AT", "2026-11-01T10:00:00Z");
+
+    expect(loadConfig().sale.startsAt?.toISOString()).toBe("2026-11-01T10:00:00.000Z");
+  });
+
+  it("leaves the sale start empty when unset", () => {
+    vi.stubEnv("SALE_STARTS_AT", "");
+
+    expect(loadConfig().sale.startsAt).toBeUndefined();
+  });
+
+  it("rejects a sale start that is not a date", () => {
+    vi.stubEnv("SALE_STARTS_AT", "tomorrow-ish");
+
+    expect(() => loadConfig()).toThrow("SALE_STARTS_AT must be a date");
+  });
 });

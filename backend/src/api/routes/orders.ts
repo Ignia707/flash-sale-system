@@ -2,6 +2,7 @@
 
 import type { FastifyPluginAsync } from "fastify";
 import type { OrderStore } from "../../lib/orders.ts";
+import { authenticate } from "../auth.ts";
 
 // the route only needs statusOf(), so tests can pass a tiny fake
 export type OrderReader = Pick<OrderStore, "statusOf">;
@@ -20,10 +21,11 @@ export const ordersRoutes =
   async (app) => {
     app.get<{ Params: { id: string } }>(
       "/api/orders/:id",
-      { schema },
+      { schema, onRequest: authenticate },
       async (request) => {
         const { id } = request.params;
-        return { orderId: id, status: await orders.statusOf(id) };
+        // only the owner sees the real status; for anyone else it looks like "not saved yet"
+        return { orderId: id, status: await orders.statusOf(id, request.user.sub) };
       },
     );
   };

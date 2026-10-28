@@ -9,10 +9,10 @@ export type OrderStore = ReturnType<typeof createOrderStore>;
 
 export function createOrderStore(pool: Pool) {
   return {
-    async statusOf(orderId: string): Promise<OrderStatus> {
+    async statusOf(orderId: string, userId: string): Promise<OrderStatus> {
       const { rows } = await pool.query(
-        "SELECT status FROM orders WHERE id = $1",
-        [orderId],
+        "SELECT status FROM orders WHERE id = $1 AND user_id = $2",
+        [orderId, userId],
       );
       const status = rows[0]?.status;
       return status === "confirmed" || status === "failed"

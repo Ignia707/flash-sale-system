@@ -11,6 +11,7 @@ import {
   type OrderQueue,
 } from "../src/lib/queue.ts";
 import { createRedis } from "../src/lib/redis.ts";
+import { asGuest, TEST_SECRET } from "./helpers.ts";
 
 const PRODUCT_ID = 900003; // differs from the gate test's id: test files run in parallel
 const STOCK = 100;
@@ -27,6 +28,7 @@ describe("POST /api/checkout (real Redis gate and queue)", () => {
     await gate.reset(PRODUCT_ID, STOCK);
     queue = await createQueue(config.rabbitmq, `test.checkout.${randomUUID()}`);
     app = buildApp({
+      jwtSecret: TEST_SECRET,
       checks: {},
       gate,
       queue,
@@ -46,12 +48,13 @@ describe("POST /api/checkout (real Redis gate and queue)", () => {
   });
 
   it("accepts exactly the stock, queues exactly those orders, turns the rest away", async () => {
+    await app.ready();
     const responses = await Promise.all(
       Array.from({ length: BUYERS }, (_, i) =>
         app.inject({
           method: "POST",
           url: "/api/checkout",
-          headers: { "x-user-id": `user-${i}` },
+          headers: { authorization: `Bearer ${app.jwt.sign({ sub: `user-${i}` })}` },
           payload: { productId: PRODUCT_ID },
         }),
       ),

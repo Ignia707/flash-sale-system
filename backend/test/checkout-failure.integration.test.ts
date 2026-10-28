@@ -5,6 +5,7 @@ import { buildApp } from "../src/api/app.ts";
 import { loadConfig } from "../src/lib/config.ts";
 import { createGate } from "../src/lib/gate.ts";
 import { createRedis } from "../src/lib/redis.ts";
+import { TEST_SECRET } from "./helpers.ts";
 
 const PRODUCT_ID = 900004; // own id: test files run in parallel
 const STOCK = 5;
@@ -13,6 +14,7 @@ describe("POST /api/checkout when the queue is down (real Redis gate)", () => {
   const redis = createRedis(loadConfig().redis);
   const gate = createGate(redis);
   const app = buildApp({
+    jwtSecret: TEST_SECRET,
     checks: {},
     gate,
     queue: {
@@ -37,12 +39,13 @@ describe("POST /api/checkout when the queue is down (real Redis gate)", () => {
   });
 
   it("answers 503 and leaves the stock untouched", async () => {
+    await app.ready();
     const responses = await Promise.all(
       Array.from({ length: 50 }, (_, i) =>
         app.inject({
           method: "POST",
           url: "/api/checkout",
-          headers: { "x-user-id": `user-${i}` },
+          headers: { authorization: `Bearer ${app.jwt.sign({ sub: `user-${i}` })}` },
           payload: { productId: PRODUCT_ID },
         }),
       ),
