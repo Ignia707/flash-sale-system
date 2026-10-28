@@ -7,6 +7,7 @@ describe("GET /health (with fake dependencies)", () => {
     const app = buildApp({
       gate: { reserve: async () => "reserved" as const },
       queue: { publish: async () => {} },
+      orders: { statusOf: async () => "processing" as const },
       checks: {
         postgres: async () => "fine",
         redis: async () => "fine",
@@ -27,6 +28,7 @@ describe("GET /health (with fake dependencies)", () => {
     const app = buildApp({
       gate: { reserve: async () => "reserved" as const },
       queue: { publish: async () => {} },
+      orders: { statusOf: async () => "processing" as const },
       checks: {
         postgres: async () => "fine",
         redis: async () => {

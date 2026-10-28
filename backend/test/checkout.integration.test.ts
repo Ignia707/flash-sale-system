@@ -26,7 +26,12 @@ describe("POST /api/checkout (real Redis gate and queue)", () => {
   beforeEach(async () => {
     await gate.reset(PRODUCT_ID, STOCK);
     queue = await createQueue(config.rabbitmq, `test.checkout.${randomUUID()}`);
-    app = buildApp({ checks: {}, gate, queue });
+    app = buildApp({
+      checks: {},
+      gate,
+      queue,
+      orders: { statusOf: async () => "processing" },
+    });
   });
 
   afterEach(async () => {

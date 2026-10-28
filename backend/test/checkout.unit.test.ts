@@ -23,6 +23,7 @@ function appWhereGateSays(result: ReserveResult, queue = fakeQueue().queue) {
     checks: {},
     gate: { reserve: async () => result },
     queue,
+    orders: { statusOf: async () => "processing" as const },
   });
 }
 
@@ -91,6 +92,7 @@ describe("POST /api/checkout (fake gate, fake queue)", () => {
         },
       },
       queue: fakeQueue().queue,
+      orders: { statusOf: async () => "processing" as const },
     });
 
     await checkout(app, {

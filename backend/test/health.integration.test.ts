@@ -13,6 +13,7 @@ describe("GET /health (real Postgres and Redis)", () => {
   const app = buildApp({
     gate: { reserve: async () => "reserved" as const },
       queue: { publish: async () => {} },
+      orders: { statusOf: async () => "processing" as const },
     checks: {
       postgres: () => pool.query("SELECT 1"),
       redis: () => redis.ping(),
