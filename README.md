@@ -3,6 +3,12 @@
 Flash-sale checkout that sells exactly 500 phones under a 100k-request spike.
 Work in progress: the full write-up (architecture, results) comes at the end.
 
+## Prerequisites
+
+- Node.js 24+ and pnpm
+- A container runtime with Compose: **Podman** (`podman-compose`) or **Docker** (`docker compose`).
+  The commands below use Podman; with Docker, replace `podman-compose` with `docker compose`.
+
 ## Backend
 
 ```bash
