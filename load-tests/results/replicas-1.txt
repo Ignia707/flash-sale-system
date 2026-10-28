@@ -1,0 +1,18 @@
+== Flash sale: 1 API replica(s), 100000 attempts in 10s, 500 phones ==
+API containers running: 1
+requests sent:        99306
+dropped (not sent):   695
+test duration:        10.0 s  (9928 requests/s achieved)
+answers 202 accepted: 500
+answers 409 duplicate:0
+answers 410 sold out: 98806
+unexpected answers:   0
+latency ms: avg 29.3 | median 0.2 | p90 11.3 | p95 22.3 | p99 1341.1 | max 1558.3
+k6 thresholds:        passed
+-- database after the sale --
+orders confirmed:     500   (expected 500)
+orders failed:        0
+stock in Postgres:    0   (expected 0)
+stock in Redis:       0   (expected 0)
+dead-letter messages: 0
+RESULT: PASS - exactly 500 sold, no oversell

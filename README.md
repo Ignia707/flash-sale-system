@@ -64,3 +64,18 @@ If you stop and start a single replica, it gets a new address: run `podman exec 
 Use **either** the containerized worker **or** `pnpm worker` on your machine, not both.
 Stop only the app containers: `podman stop app_nginx_1 app_worker_1 app_api_1 app_api_2 app_api_3`.
 With Docker, replace `podman-compose` with `docker compose`.
+
+## Load test
+
+Needs the full stack's images built once (`podman-compose --profile app build`) and the k6 image (downloaded on first run).
+
+```bash
+./load-tests/smoke.sh        # one visitor through the real flow (session -> checkout -> order status)
+./load-tests/run.sh 3        # the flash sale against 3 API replicas: 100,000 attempts in 10 s, 500 phones
+./load-tests/run.sh 4 20000 5   # optional: 4 replicas, 20,000 attempts in 5 s
+```
+
+`run.sh` recreates the app containers with load-test settings (quiet logs, no per-IP limits), seeds 500 phones, runs k6, waits for the worker to finish and then checks Postgres, Redis and RabbitMQ.
+It prints `RESULT: PASS` only if exactly 500 orders were confirmed and nothing is left over. Results: [`load-tests/results/SUMMARY.md`](load-tests/results/SUMMARY.md).
+
+`run.sh` removes its load-test containers at the end; start the normal stack again with `podman-compose --profile app up -d`.

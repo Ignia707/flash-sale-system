@@ -1,0 +1,3 @@
+# raw k6 output is large; the readable summaries (*.txt) are kept
+*.json
+*.k6.log

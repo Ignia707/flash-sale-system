@@ -42,4 +42,5 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 // accept connection from anywhere
-await app.listen({ port: config.api.port, host: "0.0.0.0" });
+// a long backlog lets a burst of new connections wait instead of being refused
+await app.listen({ port: config.api.port, host: "0.0.0.0", backlog: 4096 });
