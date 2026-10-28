@@ -17,7 +17,7 @@ const queue = await createQueue(config.rabbitmq);
 const orders = createOrderStore(pool);
 
 const app = buildApp({
-  logger: true,
+  logger: { level: config.api.logLevel },
   gate,
   queue,
   orders,

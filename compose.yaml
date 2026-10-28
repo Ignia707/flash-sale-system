@@ -1,6 +1,37 @@
-# All backing services for the flash-sale system.
-# Start:  podman-compose up -d      Stop:  podman-compose down
+# The flash-sale system.
+# Backing services only (Postgres, Redis, RabbitMQ):   podman-compose up -d
+# Whole system (+ API replicas, worker, NGINX):         podman-compose --profile app up -d --build
+# Stop:  podman-compose --profile app down
 # Reads credentials from .env (copy .env.example to .env first).
+
+# settings shared by the API and the worker; inside the network, services are reached by name
+x-app-env: &app-env
+  API_PORT: 3000
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_USER: ${POSTGRES_USER}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_DB: ${POSTGRES_DB}
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: 5672
+  RABBITMQ_USER: ${RABBITMQ_USER}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+  JWT_SECRET: ${JWT_SECRET}
+  SALE_STARTS_AT: ${SALE_STARTS_AT:-}
+
+x-app: &app
+  profiles: ["app"]
+  image: flash-sale-backend
+  build: ./backend
+  restart: unless-stopped
+  environment: *app-env
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
 
 services:
   postgres:
@@ -48,6 +79,42 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  # the API: several identical copies behind NGINX (API_REPLICAS, default 3)
+  api:
+    <<: *app
+    deploy:
+      replicas: ${API_REPLICAS:-3}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # turns queued orders into rows in Postgres (run more copies with --scale worker=N)
+  worker:
+    <<: *app
+    command: ["node", "src/worker/main.ts"]
+
+  # the only service reachable from outside: http://localhost:${HTTP_PORT:-8080}
+  nginx:
+    profiles: ["app"]
+    image: docker.io/library/nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    environment:
+      # per-IP limits; raise them for load tests (see load-tests/)
+      RATE_SESSION: ${RATE_SESSION:-10}
+      BURST_SESSION: ${BURST_SESSION:-30}
+      RATE_CHECKOUT: ${RATE_CHECKOUT:-20}
+      BURST_CHECKOUT: ${BURST_CHECKOUT:-40}
+    volumes:
+      # the image fills ${...} in *.template files and writes the result to /etc/nginx/conf.d
+      - ./infra/nginx/templates:/etc/nginx/templates:ro,Z
+      - ./infra/nginx/html:/usr/share/nginx/html:ro,Z
+    depends_on:
+      api: { condition: service_healthy }
 
 volumes:
   pgdata:

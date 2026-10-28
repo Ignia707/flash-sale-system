@@ -40,6 +40,7 @@ export function loadConfig() {
   return {
     api: {
       port: requiredInt("API_PORT"),
+      logLevel: process.env.LOG_LEVEL || "info", // "warn" silences per-request logs
     },
     postgres: {
       host: required("POSTGRES_HOST"),

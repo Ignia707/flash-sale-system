@@ -20,7 +20,7 @@ interface AppOptions {
   jwtSecret: string;
   saleStartsAt?: Date;
   now?: () => number;
-  logger?: boolean;
+  logger?: boolean | { level: string };
 }
 
 export function buildApp({
